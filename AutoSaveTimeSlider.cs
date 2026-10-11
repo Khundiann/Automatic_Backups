@@ -3,9 +3,11 @@ using UnityEngine;
 using UnityEngine.UI;
 
 #if IL2CPP
+using Il2CppScheduleOne;
 using Il2CppScheduleOne.UI.Settings;
 using Il2CppTMPro;
 #elif MONO
+using ScheduleOne;
 using ScheduleOne.UI.Settings;
 using TMPro;
 #else
@@ -65,6 +67,7 @@ namespace AutomaticBackups
 #endif
             override void OnValueChanged(float value)
         {
+            value = NormalizeGamepadStep(value);
             this.timeOnValueChange = Time.time;
             if (this.DisplayValue && this.valueLabel != null)
             {
@@ -73,6 +76,23 @@ namespace AutomaticBackups
             }
             Core.autoSaveTime.Value = (int)value;
             Core.SchedulePreferenceSave();
+        }
+
+        float NormalizeGamepadStep(float value)
+        {
+            if (!GameInput.GetCurrentInputDeviceIsGamepad())
+                return value;
+
+            int currentValue = Core.autoSaveTime.Value;
+            float adjustedValue = currentValue;
+            if (value > currentValue)
+                adjustedValue++;
+            else if (value < currentValue)
+                adjustedValue--;
+
+            adjustedValue = Mathf.Clamp(adjustedValue, base.slider.minValue, base.slider.maxValue);
+            base.slider.SetValueWithoutNotify(adjustedValue);
+            return adjustedValue;
         }
     }
 }

@@ -283,8 +283,10 @@ namespace AutomaticBackups
             }
 
             // Rows cloned at runtime are not present in the panel's serialized
-            // selectable list. Register the completed hierarchy explicitly so every
-            // retained and cloned control receives this panel as its ParentPanel.
+            // selectable list, while removed rows can leave destroyed entries behind.
+            // Rebuild the list from the completed hierarchy so controller navigation
+            // only sees live controls and each one receives the correct ParentPanel.
+            backupsUiPanel.ClearAllSelectables();
             UISelectable[] backupsSelectables = backupsUiPanel.GetComponentsInChildren<UISelectable>(true);
             for (int i = 0; i < backupsSelectables.Length; i++)
                 backupsUiPanel.AddSelectable(backupsSelectables[i]);
