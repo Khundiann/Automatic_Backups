@@ -148,7 +148,11 @@ namespace AutomaticBackups
             toggle.onValueChanged.RemoveAllListeners();
             toggle.SetIsOnWithoutNotify(false);
 
-            RegisterTabNavigation(settingsScreen.transform, controlsButton, modSettingsButton);
+            if (!RegisterTabNavigation(settingsScreen.transform, controlsButton, modSettingsButton))
+            {
+                Destroy(modSettingsButton.gameObject);
+                return null;
+            }
 
             return toggle;
         }
@@ -156,18 +160,18 @@ namespace AutomaticBackups
         // Runtime clones do not retain UISelectable's non-serialized ParentPanel.
         // Register the new tab with the same panel as the native Controls tab so
         // pointer, keyboard, and controller navigation all use the game UI system.
-        void RegisterTabNavigation(Transform settings, Transform controlsButton, Transform backupsButton)
+        bool RegisterTabNavigation(Transform settings, Transform controlsButton, Transform backupsButton)
         {
             UISelectable controlsSelectable = controlsButton.GetComponent<UISelectable>();
             UISelectable backupsSelectable = backupsButton.GetComponent<UISelectable>();
             if (controlsSelectable == null || backupsSelectable == null)
             {
                 Core.Log("Failed to register Backups tab navigation: a UISelectable component was not found.");
-                return;
+                return false;
             }
 
             if (backupsSelectable.ParentPanel != null)
-                return;
+                return true;
 
             // UIPanel assigns ParentPanel from its serialized selectable list during
             // Awake. The Settings hierarchy is inactive here, so locate the panel by
@@ -189,12 +193,18 @@ namespace AutomaticBackups
                     if (selectable != controlsSelectable)
                         continue;
 
-                    panels[i].AddSelectable(backupsSelectable);
-                    return;
+                    if (!panels[i].AddSelectable(backupsSelectable))
+                    {
+                        Core.Log("Failed to register Backups tab navigation: the tab could not be added to the Controls UIPanel.");
+                        return false;
+                    }
+
+                    return true;
                 }
             }
 
             Core.Log("Failed to register Backups tab navigation: the Controls tab's UIPanel was not found.");
+            return false;
         }
 
         // Create a panel to display our mod's settings
