@@ -1,16 +1,13 @@
 ﻿using MelonLoader;
-using HarmonyLib;
 using UnityEngine;
 using UnityEngine.UI;
 
 #if IL2CPP
-using Il2CppScheduleOne.Persistence;
-using Il2CppScheduleOne.UI.MainMenu;
 using Il2CppScheduleOne.UI.Settings;
+using Il2CppTMPro;
 #elif MONO
-using ScheduleOne.Persistence;
-using ScheduleOne.UI.MainMenu;
 using ScheduleOne.UI.Settings;
+using TMPro;
 #else
     // Other configs could go here
 #endif
@@ -21,16 +18,53 @@ namespace AutomaticBackups
     public class RetentionAmountSlider : SettingsSlider
     {
         protected int multiplier;
+
+        public Slider SliderReference => base.slider;
+        public TextMeshProUGUI ValueLabelReference => base.valueLabel;
+        public bool DisplayValueReference => base.DisplayValue;
+        public float ValueDisplayTimeReference => base.ValueDisplayTime;
+
+        public void Configure(Slider sliderComponent, TextMeshProUGUI valueLabelComponent, bool displayValue, float valueDisplayTime)
+        {
+            base.slider = sliderComponent;
+            base.valueLabel = valueLabelComponent;
+            base.DisplayValue = displayValue;
+            base.ValueDisplayTime = valueDisplayTime;
+            WireSliderListener();
+        }
+
         protected virtual void OnEnable()
         {
-            multiplier = Core.retentionSliderMultiplier.Value;
+            // Rebind after Awake in case the native SettingsSlider lifecycle added
+            // or restored listeners after this injected component was configured.
+            WireSliderListener();
+
+            multiplier = Mathf.Max(1, Core.retentionSliderMultiplier.Value);
             int minValue = DivideAndFloor(Core.retentionSliderMinFiles.Value, multiplier);
             int maxValue = DivideAndFloor(Core.retentionSliderMaxFiles.Value, multiplier);
             int value = DivideAndFloor(Core.autoDeleteRetentionCount.Value, multiplier);
 
             base.slider.minValue = minValue;
             base.slider.maxValue = maxValue;
-            base.slider.value = value;
+            base.slider.SetValueWithoutNotify(value);
+            if (base.valueLabel != null)
+            {
+                base.valueLabel.text = GetDisplayValue(base.slider.value);
+                base.valueLabel.enabled = true;
+            }
+        }
+
+        void WireSliderListener()
+        {
+            if (base.slider == null)
+                return;
+
+            base.slider.onValueChanged.RemoveAllListeners();
+#if MONO
+            base.slider.onValueChanged.AddListener(new UnityEngine.Events.UnityAction<float>(OnValueChanged));
+#else
+            base.slider.onValueChanged.AddListener(new System.Action<float>(OnValueChanged));
+#endif
         }
 
         int DivideAndFloor(int numerator, int denominator)
@@ -57,12 +91,13 @@ namespace AutomaticBackups
             override void OnValueChanged(float value)
         {
             this.timeOnValueChange = Time.time;
-            if (this.DisplayValue)
+            if (this.DisplayValue && this.valueLabel != null)
             {
                 this.valueLabel.text = this.GetDisplayValue(value);
                 this.valueLabel.enabled = true;
             }
             Core.autoDeleteRetentionCount.Value = (int)value * multiplier;
+            Core.SchedulePreferenceSave();
         }
     }
 }

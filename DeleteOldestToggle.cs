@@ -2,10 +2,10 @@
 using MelonLoader;
 
 #if IL2CPP
-using Il2CppScheduleOne.UI.MainMenu;
+using Il2CppScheduleOne;
 using Il2CppScheduleOne.UI.Settings;
 #elif MONO
-using ScheduleOne.UI.MainMenu;
+using ScheduleOne;
 using ScheduleOne.UI.Settings;
 #else
     // Other configs could go here
@@ -18,11 +18,40 @@ namespace AutomaticBackups
     {
         protected GameObject retainedCountSlider = null;
 
+        public void Configure(UIToggle toggle, GameObject retentionSlider)
+        {
+            uiToggle = toggle;
+            retainedCountSlider = retentionSlider;
+            WireToggleListener();
+        }
+
         public void Start()
         {
-            // Find the retained count slider and show/hide it based on our enableAutoDelete setting
-            retainedCountSlider = GameObject.Find("RetainedCount");
+            // Rebind after Awake so the native SettingsToggle lifecycle cannot
+            // replace the callback configured on this injected component.
+            WireToggleListener();
+
+            if (retainedCountSlider == null)
+            {
+                Core.Log("Failed to initialize the retention toggle: no retention slider reference was provided.");
+                return;
+            }
+
+            // Show/hide the retained count slider based on our enableAutoDelete setting.
             retainedCountSlider.SetActive(Core.enableAutoDelete.Value);
+        }
+
+        void WireToggleListener()
+        {
+            if (uiToggle == null)
+                return;
+
+            uiToggle.OnChanged.RemoveAllListeners();
+#if MONO
+            uiToggle.OnChanged.AddListener(new UnityEngine.Events.UnityAction<bool>(OnValueChanged));
+#else
+            uiToggle.OnChanged.AddListener(new System.Action<bool>(OnValueChanged));
+#endif
         }
         
 #if IL2CPP
@@ -31,8 +60,10 @@ namespace AutomaticBackups
         protected override void OnValueChanged(bool value)
 #endif
         {
-            retainedCountSlider.SetActive(value);
+            if (retainedCountSlider != null)
+                retainedCountSlider.SetActive(value);
             Core.enableAutoDelete.Value = value;
+            Core.SchedulePreferenceSave();
         }
     }
 }

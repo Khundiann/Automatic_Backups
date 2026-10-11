@@ -1,13 +1,9 @@
 ﻿using MelonLoader;
 using HarmonyLib;
 using UnityEngine;
-using UnityEngine.UI;
 using System.Collections.Generic;
 using System;
 using System.IO;
-using System.IO.Enumeration;
-using System.Collections;
-using System.Reflection;
 
 #if IL2CPP
 using Il2CppScheduleOne.DevUtilities;
@@ -67,6 +63,9 @@ namespace AutomaticBackups
         protected static float timeBeforeAutoSave = 600.0f; // Actual value will be calculated later
         protected static bool autoSaving = false; // If the Save() call was made by autosave
         protected static bool inMainScene = false;
+        private static bool preferenceSavePending = false;
+        private static float preferenceSaveTime = 0f;
+        private const float PREFERENCE_SAVE_DELAY = 0.5f;
 
 #if MONO
         public AssetBundle assetBundle = null;
@@ -298,6 +297,10 @@ namespace AutomaticBackups
         {
             base.OnUpdate();
 
+            // Coalesce rapid slider changes into one preferences-file write.
+            if (preferenceSavePending && Time.realtimeSinceStartup >= preferenceSaveTime)
+                FlushPendingPreferenceSave();
+
             // Don't take any action if autosaving is disabled, we aren't the host,
             // or we aren't in the Main scene
             if (!enableAutoSave.Value || !InstanceFinder.IsHost || !inMainScene)
@@ -314,6 +317,33 @@ namespace AutomaticBackups
             Singleton<SaveManager>.Instance.Save();
 
             // (Timer will be reset in Save Postfix)
+        }
+
+        public static void SchedulePreferenceSave()
+        {
+            preferenceSavePending = true;
+            preferenceSaveTime = Time.realtimeSinceStartup + PREFERENCE_SAVE_DELAY;
+        }
+
+        static void FlushPendingPreferenceSave()
+        {
+            if (!preferenceSavePending)
+                return;
+
+            MelonPreferences.Save();
+            preferenceSavePending = false;
+        }
+
+        public override void OnApplicationQuit()
+        {
+            FlushPendingPreferenceSave();
+            base.OnApplicationQuit();
+        }
+
+        public override void OnDeinitializeMelon()
+        {
+            FlushPendingPreferenceSave();
+            base.OnDeinitializeMelon();
         }
 
         // Determine how many seconds need to pass before the next autosave timer fires, based on user preferences.
