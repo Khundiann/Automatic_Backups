@@ -1,17 +1,19 @@
 ﻿using MelonLoader;
-using HarmonyLib;
 using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.Events;
 
 #if MONO
 using ScheduleOne.Persistence;
+using ScheduleOne.State;
 using ScheduleOne.UI.MainMenu;
 using ScheduleOne.DevUtilities;
+using System.Reflection;
 using TMPro;
 #else
 using Il2CppTMPro;
 using Il2CppScheduleOne.Persistence;
+using Il2CppScheduleOne.State;
 using Il2CppScheduleOne.UI.MainMenu;
 using Il2CppScheduleOne.DevUtilities;
 #endif
@@ -20,24 +22,6 @@ using Il2CppScheduleOne.DevUtilities;
 // Also creates a sub-menu to allow for selecting which backup to restore
 namespace AutomaticBackups
 {
-    // Subclassing MenuScreen wasn't working for Il2Cpp
-    // So to support our custom menu screen for restoreBackupScreeen, we'll instead create an instance of MenuScreen itself and patch it
-    [HarmonyPatch(typeof(MenuScreen), "Awake")]
-    static class MenuScreenPatch
-    {        
-        public static void Prefix(MenuScreen __instance)
-        {
-            // We only care about our "RestoreBackup" object
-            if (__instance.gameObject.name != "RestoreBackup")
-                return;
-
-            // Assign values that would normally be set in the Unity Editor
-            __instance.OpenOnStart = true;
-            __instance.PreviousScreen = ContinueMenuMod.continueScreen;
-            __instance.Group = __instance.gameObject.GetComponent<CanvasGroup>();
-        }
-    }
-
     // Allows us to modify the Continue menu
     // We need a MonoBehavior so we can clone existing objects in the scene hierarchy (I don't know how to do this outside of a MonoBehavior)
     [RegisterTypeInIl2Cpp]
@@ -121,29 +105,54 @@ namespace AutomaticBackups
 
         public void LoadClicked(int slot)
         {
-            if (!loadMenu)
-                CreateLoadMenu();
+            if (!loadMenu && !CreateLoadMenu())
+                return;
             
             PopulateLoadMenu(slot);
             restoreBackupScreen.Open(true);
         }
 
         // Clone the "Continue" menu for our "Load/Restore" menu
-        void CreateLoadMenu()
+        bool CreateLoadMenu()
         {
+            if (Core.backupRestorePanelPrefab == null)
+            {
+                Core.Log("Failed to create the Restore Backup screen: the panel prefab was not loaded.");
+                return false;
+            }
+
             // Create the Restore menu based on our panel prefab
             loadMenu = Instantiate(Core.backupRestorePanelPrefab).transform;
 
             // Clone the background from the Continue menu
             Transform background = continueMenu.Find("Background");
+            Transform title = continueMenu.Find("Title");
+            CanvasGroup canvasGroup = loadMenu.GetComponent<CanvasGroup>();
+            Transform scrollView = loadMenu.Find("Scroll View");
+            MonoStateMachine stateParent = GetContinueScreenStateParent();
+            if (background == null || title == null || canvasGroup == null ||
+                scrollView == null || stateParent == null)
+            {
+                Core.Log("Failed to create the Restore Backup screen: a required menu component was not found.");
+                Destroy(loadMenu.gameObject);
+                loadMenu = null;
+                return false;
+            }
+
             Transform ourBG = Instantiate(background, loadMenu);
             ourBG.name = "Background";
 
             // Clone the title from the Continue menu
-            Transform title = continueMenu.Find("Title");
             Transform ourTitle = Instantiate(title, loadMenu);
             ourTitle.name = "Title";
             TextMeshProUGUI tmpUGUI = ourTitle.GetComponent<TextMeshProUGUI>();
+            if (tmpUGUI == null)
+            {
+                Core.Log("Failed to create the Restore Backup screen: the title has no text component.");
+                Destroy(loadMenu.gameObject);
+                loadMenu = null;
+                return false;
+            }
             tmpUGUI.text = "Restore Backup";
 
             // Set the MainMenu as the parent and make sure the panel is hidden
@@ -151,12 +160,39 @@ namespace AutomaticBackups
             loadMenu.name = "RestoreBackup";
             loadMenu.gameObject.SetActive(false);
 
-            // Setup our restoreBackupScreen component
+            // MenuScreen now opens through a MonoState. Configure both components
+            // while the object is inactive so Awake sees the references that would
+            // normally be assigned in the Unity editor.
+            MonoState restoreState = loadMenu.gameObject.AddComponent<MonoState>();
+            restoreState.InitializeDefaultParent(stateParent);
+
             restoreBackupScreen = loadMenu.gameObject.AddComponent<MenuScreen>();
+            restoreBackupScreen.OpenOnStart = false;
+            restoreBackupScreen.AttachLobbyToScreen = false;
+            restoreBackupScreen.PreviousScreen = continueScreen;
+            restoreBackupScreen.Group = canvasGroup;
+            restoreBackupScreen.State = restoreState;
 
             // Make sure the ScrollView is drawn last
-            Transform scrollView = loadMenu.Find("Scroll View");
             scrollView.SetAsLastSibling();
+
+            // Run Awake once. MenuScreen returns the object to its closed, inactive
+            // state, after which Open() can safely push its state onto the stack.
+            loadMenu.gameObject.SetActive(true);
+            return true;
+        }
+
+        MonoStateMachine GetContinueScreenStateParent()
+        {
+            if (continueScreen == null || continueScreen.State == null)
+                return null;
+
+#if MONO
+            FieldInfo defaultParentField = typeof(MonoState).GetField("_defaultParent", BindingFlags.Instance | BindingFlags.NonPublic);
+            return defaultParentField?.GetValue(continueScreen.State) as MonoStateMachine;
+#else
+            return continueScreen.State._defaultParent;
+#endif
         }
 
         // Add buttons to the load menu

@@ -186,7 +186,6 @@ namespace AutomaticBackups
                 //GameObject.Find("DisclaimerCanvas").gameObject.SetActive(false);
                 if (mainMenu.GetComponent<SettingsMenuMod>())
                 {
-                    Log($"Backups menu has already been created.");
                     return;
                 }
                 mainMenu.AddComponent<SettingsMenuMod>();
