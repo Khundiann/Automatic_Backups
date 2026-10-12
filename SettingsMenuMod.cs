@@ -32,6 +32,7 @@ namespace AutomaticBackups
         const string SliderLabelName = "Label";
         const string ToggleControlName = "Toggle (OffOn)";
         const string SliderControlName = "Slider";
+        UIPanel backupsTabNavigationPanel = null;
 
         void Awake()
         {
@@ -71,6 +72,7 @@ namespace AutomaticBackups
             GameObject backupsPanel = CreateBackupsPanel(settingsScreen, controlsCategory);
             if (backupsPanel == null)
             {
+                UnregisterTabNavigation(backupsButton);
                 Destroy(backupsButton.gameObject);
                 return;
             }
@@ -171,7 +173,10 @@ namespace AutomaticBackups
             }
 
             if (backupsSelectable.ParentPanel != null)
+            {
+                backupsTabNavigationPanel = backupsSelectable.ParentPanel;
                 return true;
+            }
 
             // UIPanel assigns ParentPanel from its serialized selectable list during
             // Awake. The Settings hierarchy is inactive here, so locate the panel by
@@ -199,12 +204,25 @@ namespace AutomaticBackups
                         return false;
                     }
 
+                    backupsTabNavigationPanel = panels[i];
                     return true;
                 }
             }
 
             Core.Log("Failed to register Backups tab navigation: the Controls tab's UIPanel was not found.");
             return false;
+        }
+
+        void UnregisterTabNavigation(Toggle backupsButton)
+        {
+            if (backupsButton == null || backupsTabNavigationPanel == null)
+                return;
+
+            UISelectable backupsSelectable = backupsButton.GetComponent<UISelectable>();
+            if (backupsSelectable != null)
+                backupsTabNavigationPanel.RemoveSelectable(backupsSelectable, false);
+
+            backupsTabNavigationPanel = null;
         }
 
         // Create a panel to display our mod's settings

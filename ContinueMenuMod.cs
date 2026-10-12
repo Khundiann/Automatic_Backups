@@ -414,7 +414,15 @@ namespace AutomaticBackups
                 restoreBackupPanel = null;
                 return false;
             }
-            SetPanelScrollRect(restoreBackupPanel, restoreScrollRect);
+            if (!SetPanelScrollRect(restoreBackupPanel, restoreScrollRect))
+            {
+                Core.Log("Failed to create the Restore Backup screen: the panel's ScrollRect reference could not be assigned.");
+                Destroy(loadMenu.gameObject);
+                loadMenu = null;
+                restoreBackupUiScreen = null;
+                restoreBackupPanel = null;
+                return false;
+            }
             restoreBackupUiScreen.AddPanel(restoreBackupPanel);
 
             restoreBackupScreen = loadMenu.gameObject.AddComponent<MenuScreen>();
@@ -435,14 +443,18 @@ namespace AutomaticBackups
             return true;
         }
 
-        void SetPanelScrollRect(UIContentPanel panel, ScrollRect scrollRect)
+        bool SetPanelScrollRect(UIContentPanel panel, ScrollRect scrollRect)
         {
 #if MONO
             FieldInfo scrollRectField = typeof(UIPanel).GetField("scrollRect", BindingFlags.Instance | BindingFlags.NonPublic);
-            scrollRectField?.SetValue(panel, scrollRect);
+            if (scrollRectField == null)
+                return false;
+
+            scrollRectField.SetValue(panel, scrollRect);
 #else
             panel.scrollRect = scrollRect;
 #endif
+            return true;
         }
 
         MonoStateMachine GetContinueScreenStateParent()
