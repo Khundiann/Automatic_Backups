@@ -35,6 +35,8 @@ namespace AutomaticBackups
         protected UIContentPanel continuePanel = null;
         protected UIScreen restoreBackupUiScreen = null;
         protected UIContentPanel restoreBackupPanel = null;
+        protected ScrollRect restoreBackupScrollRect = null;
+        int restoreScrollResetFramesRemaining = 0;
         protected GameObject controllerSelectionFrameTemplate = null;
         static public ContinueScreen continueScreen = null;
         public ImportScreen importScreen;
@@ -42,6 +44,20 @@ namespace AutomaticBackups
         void Awake()
         {
             Init(); // Calling the Awake code from another function will keep VS from making all the code gray
+        }
+
+        void LateUpdate()
+        {
+            if (restoreScrollResetFramesRemaining <= 0)
+                return;
+
+            restoreScrollResetFramesRemaining--;
+            if (restoreScrollResetFramesRemaining > 0 || restoreBackupScrollRect == null)
+                return;
+
+            Canvas.ForceUpdateCanvases();
+            restoreBackupScrollRect.StopMovement();
+            restoreBackupScrollRect.verticalNormalizedPosition = 1f;
         }
 
         void Init()
@@ -333,6 +349,11 @@ namespace AutomaticBackups
             int backupCount = PopulateLoadMenu(slot);
             restoreBackupScreen.Open(true);
 
+            // Rebuilding the list preserves the ScrollRect's previous position. Wait
+            // until the next frame so the opened screen can finish its layout before
+            // resetting every input method to the newest backup at the top.
+            restoreScrollResetFramesRemaining = 2;
+
             if (GameInput.GetCurrentInputDeviceIsGamepad() && backupCount > 0)
                 restoreBackupPanel.SelectSelectable(backupCount - 1, false);
         }
@@ -395,14 +416,15 @@ namespace AutomaticBackups
             // system, so give the restore menu a screen and a scrollable panel.
             restoreBackupUiScreen = loadMenu.gameObject.AddComponent<UIScreen>();
             restoreBackupPanel = scrollView.gameObject.AddComponent<UIContentPanel>();
-            ScrollRect restoreScrollRect = scrollView.GetComponent<ScrollRect>();
-            if (restoreScrollRect == null)
+            restoreBackupScrollRect = scrollView.GetComponent<ScrollRect>();
+            if (restoreBackupScrollRect == null)
             {
                 Core.Log("Failed to create the Restore Backup screen: the scroll view has no ScrollRect component.");
                 Destroy(loadMenu.gameObject);
                 loadMenu = null;
                 restoreBackupUiScreen = null;
                 restoreBackupPanel = null;
+                restoreBackupScrollRect = null;
                 return false;
             }
             if (!InitializeNavigationOverride(restoreBackupPanel))
@@ -412,15 +434,17 @@ namespace AutomaticBackups
                 loadMenu = null;
                 restoreBackupUiScreen = null;
                 restoreBackupPanel = null;
+                restoreBackupScrollRect = null;
                 return false;
             }
-            if (!SetPanelScrollRect(restoreBackupPanel, restoreScrollRect))
+            if (!SetPanelScrollRect(restoreBackupPanel, restoreBackupScrollRect))
             {
                 Core.Log("Failed to create the Restore Backup screen: the panel's ScrollRect reference could not be assigned.");
                 Destroy(loadMenu.gameObject);
                 loadMenu = null;
                 restoreBackupUiScreen = null;
                 restoreBackupPanel = null;
+                restoreBackupScrollRect = null;
                 return false;
             }
             restoreBackupUiScreen.AddPanel(restoreBackupPanel);
