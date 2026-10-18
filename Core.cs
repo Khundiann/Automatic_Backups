@@ -143,24 +143,33 @@ namespace AutomaticBackups
                 scrollViewPrefab = assetBundle.LoadAsset<GameObject>(scrollViewPrefabName);
                 if (scrollViewPrefab == null)
                     LoggerInstance.Msg($"Failed to load {scrollViewPrefabName}");
-                //else
-                //    LoggerInstance.Msg($"Loaded prefab: {scrollViewPrefab}");
+                else
+                {
+                    scrollViewPrefab.hideFlags |= HideFlags.DontUnloadUnusedAsset;
+                    //LoggerInstance.Msg($"Loaded prefab: {scrollViewPrefab}");
+                }
 
                 // Load the Backup Restore panel prefab
                 const string backupPanelPrefabName = "assets/assets/trevorsassets/modmenu/prefabs/backuprestore.prefab";
                 backupRestorePanelPrefab = assetBundle.LoadAsset<GameObject>(backupPanelPrefabName);
                 if (backupRestorePanelPrefab == null)
                     LoggerInstance.Msg($"Failed to load {backupPanelPrefabName}");
-                //else
-                //    LoggerInstance.Msg($"Loaded prefab: {backupRestorePanelPrefab}");
+                else
+                {
+                    backupRestorePanelPrefab.hideFlags |= HideFlags.DontUnloadUnusedAsset;
+                    //LoggerInstance.Msg($"Loaded prefab: {backupRestorePanelPrefab}");
+                }
 
                 // Load the Backup Restore button prefab
                 const string backupRestoreButtonPrefabName = "assets/assets/trevorsassets/modmenu/prefabs/backup restore button.prefab";
                 backupRestoreButtonPrefab = assetBundle.LoadAsset<GameObject>(backupRestoreButtonPrefabName);
                 if (backupRestoreButtonPrefab == null)
                     LoggerInstance.Msg($"Failed to load {backupRestoreButtonPrefabName}");
-                //else
-                //    LoggerInstance.Msg($"Loaded prefab: {backupRestoreButtonPrefabName}");
+                else
+                {
+                    backupRestoreButtonPrefab.hideFlags |= HideFlags.DontUnloadUnusedAsset;
+                    //LoggerInstance.Msg($"Loaded prefab: {backupRestoreButtonPrefabName}");
+                }
             }
             catch (Exception ex)
             {
