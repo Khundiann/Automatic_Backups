@@ -4,6 +4,7 @@ using UnityEngine;
 using System.Collections.Generic;
 using System;
 using System.IO;
+using System.IO.Compression;
 
 #if IL2CPP
 using Il2CppScheduleOne.DevUtilities;
@@ -62,6 +63,8 @@ namespace AutomaticBackups
 
         protected static float timeBeforeAutoSave = 600.0f; // Actual value will be calculated later
         protected static bool autoSaving = false; // If the Save() call was made by autosave
+        private static string pendingBackupSavePath = null;
+        private static bool pendingBackupWasAutoSave = false;
         protected static bool inMainScene = false;
         private static bool preferenceSavePending = false;
         private static float preferenceSaveTime = 0f;
@@ -262,21 +265,83 @@ namespace AutomaticBackups
         [HarmonyPatch(typeof(SaveManager), "Save", new Type[] { typeof(string) })]
         static class SavePatch
         {
-            // After saving, uses Schedule I's built-in zip exporter to backup the save that was just made to a timestamped zip file.
-            public static void Postfix(string saveFolderPath)
+            public static void Prefix(SaveManager __instance, out bool __state)
             {
+                __state = __instance.IsSaving;
+            }
+
+            // Save() starts a coroutine and returns before every saveable has been
+            // written. Queue the backup here and export it once IsSaving is false.
+            public static void Postfix(SaveManager __instance, string saveFolderPath, bool __state)
+            {
+                if (__state || !__instance.IsSaving)
+                    return;
+
+                pendingBackupSavePath = saveFolderPath;
+                pendingBackupWasAutoSave = autoSaving;
+            }
+        }
+
+        static void CompletePendingBackup()
+        {
+            if (string.IsNullOrEmpty(pendingBackupSavePath))
+                return;
+
+            SaveManager saveManager = Singleton<SaveManager>.Instance;
+            if (saveManager == null || saveManager.IsSaving)
+                return;
+
+            string saveFolderPath = pendingBackupSavePath;
+            bool wasAutoSave = pendingBackupWasAutoSave;
+            string temporaryDest = null;
+            pendingBackupSavePath = null;
+            pendingBackupWasAutoSave = false;
+
+            try
+            {
+                if (SaveManager.SaveError)
+                {
+                    Log("Backup was not created because the game save completed with errors.");
+                    return;
+                }
+
                 string backupDir = GetBackupPath(saveFolderPath);
+                string timestamp = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss");
+                string autosavePrefix = wasAutoSave ? "auto_" : "";
+                string backupDest = Path.Combine(backupDir, autosavePrefix + timestamp + ".zip");
+                temporaryDest = backupDest + ".tmp";
 
-                // Export save folder to .zip - <parent>\Backups\<saveFolderName>\<timestamp>.zip
-                var timestamp = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss");
-                var autosavePrefix = autoSaving ? "auto_" : "";
-                var backupDest = Path.Combine(backupDir, autosavePrefix + timestamp + ".zip");
-                SaveExportButton.ZipSaveFolder(saveFolderPath, backupDest);
+                SaveExportButton.ZipSaveFolder(saveFolderPath, temporaryDest);
+                using (ZipArchive archive = ZipFile.OpenRead(temporaryDest))
+                {
+                    if (archive.Entries.Count == 0)
+                        throw new InvalidDataException("The backup archive is empty.");
+                }
 
-                Core.logger.Msg($"Exported\n{saveFolderPath} to\n{backupDest}");
+                if (File.Exists(backupDest))
+                    File.Delete(backupDest);
+                File.Move(temporaryDest, backupDest);
 
-                // Add the newly-created file to our ordered list of backups and ensure we don't have too many files
-                Core.AddNewBackupFile(backupDest);
+                logger.Msg($"Exported\n{saveFolderPath} to\n{backupDest}");
+                AddNewBackupFile(backupDest);
+            }
+            catch (Exception ex)
+            {
+                Log($"Failed to create backup: {ex.Message}");
+            }
+            finally
+            {
+                if (!string.IsNullOrEmpty(temporaryDest) && File.Exists(temporaryDest))
+                {
+                    try
+                    {
+                        File.Delete(temporaryDest);
+                    }
+                    catch (Exception ex)
+                    {
+                        Log($"Failed to remove temporary backup: {ex.Message}");
+                    }
+                }
 
                 ResetAutoSaveTimer();
             }
@@ -309,6 +374,8 @@ namespace AutomaticBackups
             if (preferenceSavePending && Time.realtimeSinceStartup >= preferenceSaveTime)
                 FlushPendingPreferenceSave();
 
+            CompletePendingBackup();
+
             // Don't take any action if autosaving is disabled, we aren't the host,
             // or we aren't in the Main scene
             if (!enableAutoSave.Value || !InstanceFinder.IsHost || !inMainScene)
@@ -319,12 +386,16 @@ namespace AutomaticBackups
             if (timeBeforeAutoSave > 0f)
                 return;
 
+            SaveManager saveManager = Singleton<SaveManager>.Instance;
+            if (saveManager == null || saveManager.IsSaving)
+                return;
+
             // Time to autosave
             Log("Autosaving...");
             autoSaving = true;
-            Singleton<SaveManager>.Instance.Save();
+            saveManager.Save();
 
-            // (Timer will be reset in Save Postfix)
+            // The timer is reset after the completed save has been archived.
         }
 
         public static void SchedulePreferenceSave()
